@@ -3,14 +3,12 @@ import { OrientationEnum } from "./../types/shorts";
 import fs from "fs-extra";
 import cuid from "cuid";
 import path from "path";
-import https from "https";
-import http from "http";
 
 import { Kokoro } from "./libraries/Kokoro";
 import { Remotion } from "./libraries/Remotion";
 import { Whisper } from "./libraries/Whisper";
 import { FFMpeg } from "./libraries/FFmpeg";
-import { PexelsAPI } from "./libraries/Pexels";
+import { VideoProviderManager } from "../providers";
 import { Config } from "../config";
 import { logger } from "../logger";
 import { MusicManager } from "./music";
@@ -36,7 +34,7 @@ export class ShortCreator {
     private kokoro: Kokoro,
     private whisper: Whisper,
     private ffmpeg: FFMpeg,
-    private pexelsApi: PexelsAPI,
+    private videoProviderManager: VideoProviderManager,
     private musicManager: MusicManager,
   ) {}
 
@@ -100,7 +98,7 @@ export class ShortCreator {
     );
     const scenes: Scene[] = [];
     let totalDuration = 0;
-    const excludeVideoIds = [];
+    const excludeVideoIds: string[] = [];
     const tempFiles = [];
 
     const orientation: OrientationEnum =
@@ -137,40 +135,15 @@ export class ShortCreator {
       const captions = await this.whisper.CreateCaption(tempWavPath);
 
       await this.ffmpeg.saveToMp3(audioStream, tempMp3Path);
-      const video = await this.pexelsApi.findVideo(
-        scene.searchTerms,
-        audioLength,
-        excludeVideoIds,
-        orientation,
+      const video = await this.videoProviderManager.findAndDownloadVideo(
+        {
+          searchTerms: scene.searchTerms,
+          minDurationSeconds: audioLength,
+          excludeIds: excludeVideoIds,
+          orientation,
+        },
+        tempVideoPath,
       );
-
-      logger.debug(`Downloading video from ${video.url} to ${tempVideoPath}`);
-
-      await new Promise<void>((resolve, reject) => {
-        const fileStream = fs.createWriteStream(tempVideoPath);
-        https
-          .get(video.url, (response: http.IncomingMessage) => {
-            if (response.statusCode !== 200) {
-              reject(
-                new Error(`Failed to download video: ${response.statusCode}`),
-              );
-              return;
-            }
-
-            response.pipe(fileStream);
-
-            fileStream.on("finish", () => {
-              fileStream.close();
-              logger.debug(`Video downloaded successfully to ${tempVideoPath}`);
-              resolve();
-            });
-          })
-          .on("error", (err: Error) => {
-            fs.unlink(tempVideoPath, () => {}); // Delete the file if download failed
-            logger.error(err, "Error downloading video:");
-            reject(err);
-          });
-      });
 
       excludeVideoIds.push(video.id);
 

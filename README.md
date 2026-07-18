@@ -70,7 +70,7 @@ You can find example n8n workflows created with the REST/MCP server [in this rep
 - Generate complete short videos from text prompts
 - Text-to-speech conversion
 - Automatic caption generation and styling
-- Background video search and selection via Pexels
+- Multi-provider background video search and selection (Coverr, Pixabay, Pexels, or your own local video files), with automatic fallback
 - Background music with genre/mood selection
 - Serve as both REST API and Model Context Protocol (MCP) server
 
@@ -80,19 +80,19 @@ Shorts Creator takes simple text inputs and search terms, then:
 
 1. Converts text to speech using Kokoro TTS
 2. Generates accurate captions via Whisper
-3. Finds relevant background videos from Pexels
+3. Finds relevant background videos from the configured video provider (see [Video Providers & Fallback](#video-providers--fallback))
 4. Composes all elements with Remotion
 5. Renders a professional-looking short video with perfectly timed captions
 
 # Limitations
 
 - The project only capable generating videos with English voiceover (kokoro-js doesn’t support other languages at the moment)
-- The background videos are sourced from Pexels
+- Background videos are sourced from whichever video provider is configured (Coverr, Pixabay, Pexels, or your own local files)
 
 # General Requirements
 
-- internet
-- free pexels api key
+- internet (not required if you only use the local video provider)
+- at least one video source configured: a free API key for Coverr, Pixabay, or Pexels, or your own video files in `LOCAL_VIDEOS_DIR` - see [Video Providers & Fallback](#video-providers--fallback)
 - ≥ 3 gb free RAM, my recommendation is 4gb RAM
 - ≥ 2 vCPU
 - ≥ 5gb disc space
@@ -105,7 +105,27 @@ Shorts Creator takes simple text inputs and search terms, then:
 Each video is assembled from multiple scenes. These scenes consists of
 
 1. Text: Narration, the text the TTS will read and create captions from.
-2. Search terms: The keywords the server should use to find videos from Pexels API. If none can be found, joker terms are being used (`nature`, `globe`, `space`, `ocean`)
+2. Search terms: The keywords the server should use to find videos from the configured video provider. If none can be found, joker terms are being used (`nature`, `globe`, `space`, `ocean`) - joker terms only apply to the Pexels provider
+
+# Video Providers & Fallback
+
+The server no longer requires a Pexels API key. Instead it tries a chain of video providers, in this order,
+using the first one that's configured and succeeds:
+
+`VIDEO_PROVIDER` (your chosen primary) → Coverr → Pixabay → Pexels → Local files
+
+Set `VIDEO_PROVIDER` to pick which one is tried first (`coverr`, `pixabay`, `pexels`, or `local`); it's moved
+to the front of the same fallback chain. If a provider has no API key configured, or a search/download fails,
+the next one in the chain is tried automatically - the local provider (reading video files from
+`LOCAL_VIDEOS_DIR`, default `./assets/videos`) is always the final fallback. The server will only refuse to
+start if **none** of the providers are usable (no API keys set and no local video files present).
+
+| Provider | Env var(s)                       | Get a key                                          |
+| -------- | --------------------------------- | --------------------------------------------------- |
+| Coverr   | `COVERR_API_KEY`                  | [coverr.co](https://coverr.co/)                      |
+| Pixabay  | `PIXABAY_API_KEY`                 | [pixabay.com/api/docs](https://pixabay.com/api/docs/) |
+| Pexels   | `PEXELS_API_KEY`                  | [pexels.com/api](https://www.pexels.com/api/)        |
+| Local    | `LOCAL_VIDEOS_DIR` (default `./assets/videos`) | your own video files, no key needed  |
 
 # Getting started
 
@@ -121,7 +141,7 @@ There are three docker images, for three different use cases. Generally speaking
 - `VIDEO_CACHE_SIZE_IN_BYTES=2097152000` (2gb) to overcome OOM errors coming from Remotion with limited resources
 
 ```jsx
-docker run -it --rm --name short-video-maker -p 3123:3123 -e LOG_LEVEL=debug -e PEXELS_API_KEY= gyoridavid/short-video-maker:latest-tiny
+docker run -it --rm --name short-video-maker -p 3123:3123 -e LOG_LEVEL=debug -e VIDEO_PROVIDER=pexels -e PEXELS_API_KEY= gyoridavid/short-video-maker:latest-tiny
 ```
 
 ### Normal
@@ -132,7 +152,7 @@ docker run -it --rm --name short-video-maker -p 3123:3123 -e LOG_LEVEL=debug -e 
 - `VIDEO_CACHE_SIZE_IN_BYTES=2097152000` (2gb) to overcome OOM errors coming from Remotion with limited resources
 
 ```jsx
-docker run -it --rm --name short-video-maker -p 3123:3123 -e LOG_LEVEL=debug -e PEXELS_API_KEY= gyoridavid/short-video-maker:latest
+docker run -it --rm --name short-video-maker -p 3123:3123 -e LOG_LEVEL=debug -e VIDEO_PROVIDER=pexels -e PEXELS_API_KEY= gyoridavid/short-video-maker:latest
 ```
 
 ### Cuda
@@ -145,7 +165,7 @@ If you own an Nvidia GPU and you want use a larger whisper model with GPU accele
 - `VIDEO_CACHE_SIZE_IN_BYTES=2097152000` (2gb) to overcome OOM errors coming from Remotion with limited resources
 
 ```jsx
-docker run -it --rm --name short-video-maker -p 3123:3123 -e LOG_LEVEL=debug -e PEXELS_API_KEY= --gpus=all gyoridavid/short-video-maker:latest-cuda
+docker run -it --rm --name short-video-maker -p 3123:3123 -e LOG_LEVEL=debug -e VIDEO_PROVIDER=pexels -e PEXELS_API_KEY= --gpus=all gyoridavid/short-video-maker:latest-cuda
 ```
 
 ## Docker compose
@@ -160,6 +180,7 @@ services:
     image: gyoridavid/short-video-maker:latest-tiny
     environment:
       - LOG_LEVEL=debug
+      - VIDEO_PROVIDER=pexels
       - PEXELS_API_KEY=
     ports:
       - "3123:3123"
@@ -212,12 +233,16 @@ You can load it on http://localhost:3123
 
 ## 🟢 Configuration
 
-| key             | description                                                     | default |
-| --------------- | --------------------------------------------------------------- | ------- |
-| PEXELS_API_KEY  | [your (free) Pexels API key](https://www.pexels.com/api/)       |         |
-| LOG_LEVEL       | pino log level                                                  | info    |
-| WHISPER_VERBOSE | whether the output of whisper.cpp should be forwarded to stdout | false   |
-| PORT            | the port the server will listen on                              | 3123    |
+| key              | description                                                                          | default             |
+| ---------------- | ------------------------------------------------------------------------------------- | ------------------- |
+| VIDEO_PROVIDER   | primary video provider to try first: `coverr`, `pixabay`, `pexels`, or `local`         | pexels              |
+| COVERR_API_KEY   | [your (free) Coverr API key](https://coverr.co/)                                      |                     |
+| PIXABAY_API_KEY  | [your (free) Pixabay API key](https://pixabay.com/api/docs/)                          |                     |
+| PEXELS_API_KEY   | [your (free) Pexels API key](https://www.pexels.com/api/)                             |                     |
+| LOCAL_VIDEOS_DIR | folder of your own video files, used by the `local` provider (see [Video Providers & Fallback](#video-providers--fallback)) | ./assets/videos |
+| LOG_LEVEL        | pino log level                                                                         | info                |
+| WHISPER_VERBOSE  | whether the output of whisper.cpp should be forwarded to stdout                        | false               |
+| PORT             | the port the server will listen on                                                    | 3123                |
 
 ## ⚙️ System configuration
 
@@ -262,6 +287,38 @@ You can load it on http://localhost:3123
 
 - `create-short-video` Creates a short video - the LLM will figure out the right configuration. If you want to use specific configuration, you need to specify those in you prompt.
 - `get-video-status` Somewhat useless, it’s meant for checking the status of the video, but since the AI agents aren’t really good with the concept of time, you’ll probably will end up using the REST API for that anyway.
+- `create-character` Creates a character bible (name, description, reference images, optional LoRA/IP-Adapter paths) that can be referenced by ID for consistent characters across scenes.
+- `generate-script` Expands a short film idea into a script (scenes with narration and visual descriptions) without rendering anything - useful for reviewing/editing before committing to a render.
+- `create-ai-film` Runs the full idea → script → storyboard → video pipeline in one call and returns a `videoId`, pollable with `get-video-status`.
+
+# AI Filmmaking Platform (experimental)
+
+On top of the original single-shot `create-short-video` tool, the server includes a modular pipeline for
+turning a short idea into a full script and storyboard before rendering:
+
+```
+Idea → Script (story-engine) → Characters (character-manager) → Storyboard (storyboard) → Render (existing pipeline)
+```
+
+- **`src/story-engine`** - turns a `FilmIdea` into a `Script` (scenes with narration + visual descriptions).
+  Uses a local [Ollama](https://ollama.com/) server if `OLLAMA_URL` is set and reachable; otherwise falls back
+  to a zero-dependency template-based scene splitter that works with no setup at all.
+- **`src/character-manager`** - stores reusable "character bibles" (name, description, reference images,
+  optional LoRA weights path / IP-Adapter reference images) as JSON files under the data directory, so the
+  same character can be referenced across multiple films.
+- **`src/storyboard`** - compiles a `Script` (+ referenced characters) down into the same `SceneInput[]` shape
+  `create-short-video` already accepts, so it renders through the *exact same*, unmodified Remotion pipeline.
+- **`src/ai-director`** - the orchestrator (`create-ai-film`) that runs the whole chain and queues the render.
+- **`src/image-providers`** and **`src/video-providers`** - optional local generative backends (SDXL/FLUX via
+  [ComfyUI](https://github.com/comfyanonymous/ComfyUI), LTX-Video, Wan-Video, AnimateDiff) for future
+  image/video generation, all opt-in via URL env vars and gracefully skipped when not configured.
+- **`src/audio-providers`** - a Kokoro-first audio provider abstraction (with an optional ElevenLabs fallback),
+  not yet wired into the render pipeline (Kokoro is called directly there, unchanged).
+
+Set `PROJECT_TYPE` (`short-film`, `documentary`, `shorts`, or `commercial`) to influence script length/pacing
+in the template engine. Everything here is additive and off by default - if you never set `OLLAMA_URL`,
+`COMFYUI_URL`, `LTX_VIDEO_URL`, or `WAN_VIDEO_URL`, the platform behaves exactly like the original
+`create-short-video` tool, just with an extra optional idea → script step in front of it.
 
 # REST API
 
@@ -472,7 +529,8 @@ No (t yet)
 
 ## Can I select different source for the videos than Pexels, or provide my own video
 
-No
+Yes - see [Video Providers & Fallback](#video-providers--fallback). Coverr and Pixabay are supported
+alongside Pexels, and you can provide your own video files via the local provider (`LOCAL_VIDEOS_DIR`).
 
 ## Can the project generate videos from images?
 
@@ -486,7 +544,9 @@ No
 | [Whisper CPP](https://github.com/ggml-org/whisper.cpp) | v1.5.5   | MIT                                                                               | Speech-to-text for captions     |
 | [FFmpeg](https://ffmpeg.org/)                          | ^2.1.3   | LGPL/GPL                                                                          | Audio/video manipulation        |
 | [Kokoro.js](https://www.npmjs.com/package/kokoro-js)   | ^1.2.0   | MIT                                                                               | Text-to-speech generation       |
-| [Pexels API](https://www.pexels.com/api/)              | N/A      | [Pexels Terms](https://www.pexels.com/license/)                                   | Background videos               |
+| [Pexels API](https://www.pexels.com/api/)              | N/A      | [Pexels Terms](https://www.pexels.com/license/)                                   | Background videos (optional)    |
+| [Coverr API](https://coverr.co/)                        | N/A      | [Coverr Terms](https://coverr.co/terms)                                           | Background videos (optional)    |
+| [Pixabay API](https://pixabay.com/api/docs/)             | N/A      | [Pixabay License](https://pixabay.com/service/license/)                           | Background videos (optional)    |
 
 ## How to contribute?
 
@@ -501,6 +561,6 @@ This project is licensed under the [MIT License](LICENSE).
 
 - ❤️ [Remotion](https://remotion.dev/) for programmatic video generation
 - ❤️ [Whisper](https://github.com/ggml-org/whisper.cpp) for speech-to-text
-- ❤️ [Pexels](https://www.pexels.com/) for video content
+- ❤️ [Pexels](https://www.pexels.com/), [Coverr](https://coverr.co/) and [Pixabay](https://pixabay.com/) for video content
 - ❤️ [FFmpeg](https://ffmpeg.org/) for audio/video processing
 - ❤️ [Kokoro](https://github.com/hexgrad/kokoro) for TTS

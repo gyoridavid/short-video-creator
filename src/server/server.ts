@@ -10,12 +10,21 @@ import { APIRouter } from "./routers/rest";
 import { MCPRouter } from "./routers/mcp";
 import { logger } from "../logger";
 import { Config } from "../config";
+import { CharacterStore } from "../character-manager/CharacterStore";
+import { StoryEngine } from "../story-engine";
+import { AIDirector } from "../ai-director";
 
 export class Server {
   private app: express.Application;
   private config: Config;
 
-  constructor(config: Config, shortCreator: ShortCreator) {
+  constructor(
+    config: Config,
+    shortCreator: ShortCreator,
+    characterStore: CharacterStore,
+    storyEngine: StoryEngine,
+    aiDirector: AIDirector,
+  ) {
     this.config = config;
     this.app = express();
 
@@ -24,8 +33,13 @@ export class Server {
       res.status(200).json({ status: "ok" });
     });
 
-    const apiRouter = new APIRouter(config, shortCreator);
-    const mcpRouter = new MCPRouter(shortCreator);
+    const apiRouter = new APIRouter(config, shortCreator, characterStore);
+    const mcpRouter = new MCPRouter(
+      shortCreator,
+      characterStore,
+      storyEngine,
+      aiDirector,
+    );
     this.app.use("/api", apiRouter.router);
     this.app.use("/mcp", mcpRouter.router);
 

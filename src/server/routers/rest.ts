@@ -6,10 +6,11 @@ import type {
 import fs from "fs-extra";
 import path from "path";
 
-import { validateCreateShortInput } from "../validator";
+import { validateCreateShortInput, validateCreateCharacterInput } from "../validator";
 import { ShortCreator } from "../../short-creator/ShortCreator";
 import { logger } from "../../logger";
 import { Config } from "../../config";
+import type { CharacterStore } from "../../character-manager/CharacterStore";
 
 // todo abstract class
 export class APIRouter {
@@ -17,7 +18,11 @@ export class APIRouter {
   private shortCreator: ShortCreator;
   private config: Config;
 
-  constructor(config: Config, shortCreator: ShortCreator) {
+  constructor(
+    config: Config,
+    shortCreator: ShortCreator,
+    private characterStore: CharacterStore,
+  ) {
     this.config = config;
     this.router = express.Router();
     this.shortCreator = shortCreator;
@@ -219,6 +224,43 @@ export class APIRouter {
             error: "Video not found",
           });
         }
+      },
+    );
+
+    this.router.post(
+      "/characters",
+      (req: ExpressRequest, res: ExpressResponse) => {
+        try {
+          const input = validateCreateCharacterInput(req.body);
+          const character = this.characterStore.create(input);
+          res.status(201).json(character);
+        } catch (error: unknown) {
+          logger.error(error, "Error creating character");
+          res.status(400).json({
+            error: "Invalid input",
+            message: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+      },
+    );
+
+    this.router.get(
+      "/characters",
+      (req: ExpressRequest, res: ExpressResponse) => {
+        res.status(200).json(this.characterStore.list());
+      },
+    );
+
+    this.router.get(
+      "/characters/:characterId",
+      (req: ExpressRequest, res: ExpressResponse) => {
+        const { characterId } = req.params;
+        const character = this.characterStore.get(characterId);
+        if (!character) {
+          res.status(404).json({ error: "Character not found" });
+          return;
+        }
+        res.status(200).json(character);
       },
     );
   }

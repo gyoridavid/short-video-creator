@@ -8,7 +8,7 @@ import { Kokoro } from "./libraries/Kokoro";
 import { Remotion } from "./libraries/Remotion";
 import { Whisper } from "./libraries/Whisper";
 import { FFMpeg } from "./libraries/FFmpeg";
-import { PexelsAPI } from "./libraries/Pexels";
+import { VideoProviderManager } from "../providers";
 import { Config } from "../config";
 import { MusicManager } from "./music";
 
@@ -149,15 +149,14 @@ test("test me", async () => {
   vi.spyOn(ffmpeg, "saveNormalizedAudio").mockResolvedValue("mocked-path.wav");
   vi.spyOn(ffmpeg, "saveToMp3").mockResolvedValue("mocked-path.mp3");
 
-  const pexelsAPI = new PexelsAPI("mock-api-key");
-  vi.spyOn(pexelsAPI, "findVideo").mockResolvedValue({
+  const config = new Config();
+  const videoProviderManager = new VideoProviderManager(config);
+  vi.spyOn(videoProviderManager, "findAndDownloadVideo").mockResolvedValue({
     id: "mock-video-id-1",
     url: "https://example.com/mock-video-1.mp4",
     width: 1080,
     height: 1920,
   });
-
-  const config = new Config();
   const remotion = await Remotion.init(config);
 
   // control the render promise resolution
@@ -185,7 +184,7 @@ test("test me", async () => {
     kokoro,
     whisper,
     ffmpeg,
-    pexelsAPI,
+    videoProviderManager,
     musicManager,
   );
 
