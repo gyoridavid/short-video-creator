@@ -6,12 +6,16 @@ import { Kokoro } from "./short-creator/libraries/Kokoro";
 import { Remotion } from "./short-creator/libraries/Remotion";
 import { Whisper } from "./short-creator/libraries/Whisper";
 import { FFMpeg } from "./short-creator/libraries/FFmpeg";
-import { PexelsAPI } from "./short-creator/libraries/Pexels";
+import { VideoProviderManager } from "./providers";
 import { Config } from "./config";
 import { ShortCreator } from "./short-creator/ShortCreator";
 import { logger } from "./logger";
 import { Server } from "./server/server";
 import { MusicManager } from "./short-creator/music";
+import { OrientationEnum } from "./types/shorts";
+import { CharacterStore } from "./character-manager/CharacterStore";
+import { StoryEngine } from "./story-engine";
+import { AIDirector } from "./ai-director";
 
 async function main() {
   const config = new Config();
@@ -39,7 +43,7 @@ async function main() {
   const whisper = await Whisper.init(config);
   logger.debug("initializing ffmpeg");
   const ffmpeg = await FFMpeg.init();
-  const pexelsApi = new PexelsAPI(config.pexelsApiKey);
+  const videoProviderManager = new VideoProviderManager(config);
 
   logger.debug("initializing the short creator");
   const shortCreator = new ShortCreator(
@@ -48,7 +52,7 @@ async function main() {
     kokoro,
     whisper,
     ffmpeg,
-    pexelsApi,
+    videoProviderManager,
     musicManager,
   );
 
@@ -63,7 +67,11 @@ async function main() {
       try {
         const audioBuffer = (await kokoro.generate("hi", "af_heart")).audio;
         await ffmpeg.createMp3DataUri(audioBuffer);
-        await pexelsApi.findVideo(["dog"], 2.4);
+        await videoProviderManager.findVideo({
+          searchTerms: ["dog"],
+          minDurationSeconds: 2.4,
+          orientation: OrientationEnum.portrait,
+        });
         const testVideoPath = path.join(config.tempDirPath, "test.mp4");
         await remotion.testRender(testVideoPath);
         fs.rmSync(testVideoPath, { force: true });
@@ -81,8 +89,18 @@ async function main() {
     }
   }
 
+  const characterStore = new CharacterStore(config.characterStoreDirPath);
+  const storyEngine = new StoryEngine(config);
+  const aiDirector = new AIDirector(config, shortCreator, characterStore);
+
   logger.debug("initializing the server");
-  const server = new Server(config, shortCreator);
+  const server = new Server(
+    config,
+    shortCreator,
+    characterStore,
+    storyEngine,
+    aiDirector,
+  );
   const app = server.start();
 
   // todo add shutdown handler

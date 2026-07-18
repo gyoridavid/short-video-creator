@@ -1,4 +1,8 @@
 import { createShortInput, CreateShortInput } from "../types/shorts";
+import {
+  createCharacterInput,
+  CreateCharacterInput,
+} from "../types/filmmaking";
 import { logger } from "../logger";
 import { ZodError } from "zod";
 
@@ -16,6 +20,25 @@ export function validateCreateShortInput(input: object): CreateShortInput {
   }
 
   // Process the validation errors
+  const errorResult = formatZodError(validated.error);
+
+  throw new Error(
+    JSON.stringify({
+      message: errorResult.message,
+      missingFields: errorResult.missingFields,
+    }),
+  );
+}
+
+export function validateCreateCharacterInput(
+  input: object,
+): CreateCharacterInput {
+  const validated = createCharacterInput.safeParse(input);
+
+  if (validated.success) {
+    return validated.data;
+  }
+
   const errorResult = formatZodError(validated.error);
 
   throw new Error(

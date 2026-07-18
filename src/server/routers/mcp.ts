@@ -6,13 +6,26 @@ import z from "zod";
 import { ShortCreator } from "../../short-creator/ShortCreator";
 import { logger } from "../../logger";
 import { renderConfig, sceneInput } from "../../types/shorts";
+import {
+  createAiFilmInput,
+  createCharacterInput,
+  generateScriptInput,
+} from "../../types/filmmaking";
+import type { CharacterStore } from "../../character-manager/CharacterStore";
+import type { StoryEngine } from "../../story-engine";
+import type { AIDirector } from "../../ai-director";
 
 export class MCPRouter {
   router: express.Router;
   shortCreator: ShortCreator;
   transports: { [sessionId: string]: SSEServerTransport } = {};
   mcpServer: McpServer;
-  constructor(shortCreator: ShortCreator) {
+  constructor(
+    shortCreator: ShortCreator,
+    private characterStore: CharacterStore,
+    private storyEngine: StoryEngine,
+    private aiDirector: AIDirector,
+  ) {
     this.router = express.Router();
     this.shortCreator = shortCreator;
 
@@ -59,6 +72,61 @@ export class MCPRouter {
       async ({ scenes, config }) => {
         const videoId = await this.shortCreator.addToQueue(scenes, config);
 
+        return {
+          content: [
+            {
+              type: "text",
+              text: videoId,
+            },
+          ],
+        };
+      },
+    );
+
+    this.mcpServer.tool(
+      "create-character",
+      "Create a character bible (name, description, reference images) so the same character can be kept consistent across scenes",
+      createCharacterInput.shape,
+      async (input) => {
+        const character = this.characterStore.create(input);
+        return {
+          content: [
+            {
+              type: "text",
+              text: character.id,
+            },
+          ],
+        };
+      },
+    );
+
+    this.mcpServer.tool(
+      "generate-script",
+      "Generate a script (scenes with narration and visual descriptions) from a film idea, without rendering it",
+      generateScriptInput.shape,
+      async ({ idea }) => {
+        const script = await this.storyEngine.generateScript(idea);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(script),
+            },
+          ],
+        };
+      },
+    );
+
+    this.mcpServer.tool(
+      "create-ai-film",
+      "Generate a script from an idea and render it end-to-end (idea -> script -> storyboard -> video). Poll with get-video-status",
+      createAiFilmInput.shape,
+      async ({ idea, characterIds, config }) => {
+        const videoId = await this.aiDirector.createFilm(
+          idea,
+          characterIds ?? [],
+          config ?? {},
+        );
         return {
           content: [
             {

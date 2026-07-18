@@ -89,6 +89,7 @@
     "@vitejs/plugin-react": "^4.4.1",
     "autoprefixer": "^10.4.16",
     "eslint": "^9.24.0",
+    "memfs": "^3.4.3",
     "postcss": "^8.4.31",
     "prettier": "^3.5.3",
     "rimraf": "^6.0.1",

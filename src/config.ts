@@ -4,9 +4,12 @@ import os from "os";
 import fs from "fs-extra";
 import pino from "pino";
 import { kokoroModelPrecision, whisperModels } from "./types/shorts";
+import { ProjectTypeEnum } from "./types/filmmaking";
 
 const defaultLogLevel: pino.Level = "info";
 const defaultPort = 3123;
+const defaultVideoProvider = "pexels";
+const defaultProjectType = ProjectTypeEnum.shorts;
 const whisperVersion = "1.7.1";
 const defaultWhisperModel: whisperModels = "medium.en"; // possible options: "tiny", "tiny.en", "base", "base.en", "small", "small.en", "medium", "medium.en", "large-v1", "large-v2", "large-v3", "large-v3-turbo"
 
@@ -37,7 +40,22 @@ export class Config {
   public tempDirPath: string;
   public packageDirPath: string;
   public musicDirPath: string;
-  public pexelsApiKey: string;
+  public pexelsApiKey?: string;
+  public coverrApiKey?: string;
+  public pixabayApiKey?: string;
+  public videoProvider: string;
+  public localVideosDirPath: string;
+
+  // AI filmmaking platform (all optional)
+  public projectType: ProjectTypeEnum;
+  public comfyUiUrl?: string;
+  public comfyWorkflowsDirPath: string;
+  public ltxVideoUrl?: string;
+  public wanVideoUrl?: string;
+  public ollamaUrl?: string;
+  public elevenLabsApiKey?: string;
+  public characterStoreDirPath: string;
+
   public logLevel: pino.Level;
   public whisperVerbose: boolean;
   public port: number;
@@ -74,7 +92,26 @@ export class Config {
     this.staticDirPath = path.join(this.packageDirPath, "static");
     this.musicDirPath = path.join(this.staticDirPath, "music");
 
-    this.pexelsApiKey = process.env.PEXELS_API_KEY as string;
+    this.pexelsApiKey = process.env.PEXELS_API_KEY || undefined;
+    this.coverrApiKey = process.env.COVERR_API_KEY || undefined;
+    this.pixabayApiKey = process.env.PIXABAY_API_KEY || undefined;
+    this.videoProvider = process.env.VIDEO_PROVIDER || defaultVideoProvider;
+    this.localVideosDirPath =
+      process.env.LOCAL_VIDEOS_DIR || path.join(process.cwd(), "assets", "videos");
+
+    this.projectType =
+      (process.env.PROJECT_TYPE as ProjectTypeEnum) || defaultProjectType;
+    this.comfyUiUrl = process.env.COMFYUI_URL || undefined;
+    this.comfyWorkflowsDirPath =
+      process.env.COMFY_WORKFLOWS_DIR ||
+      path.join(process.cwd(), "assets", "workflows");
+    this.ltxVideoUrl = process.env.LTX_VIDEO_URL || undefined;
+    this.wanVideoUrl = process.env.WAN_VIDEO_URL || undefined;
+    this.ollamaUrl = process.env.OLLAMA_URL || undefined;
+    this.elevenLabsApiKey = process.env.ELEVENLABS_API_KEY || undefined;
+    this.characterStoreDirPath = path.join(this.dataDirPath, "characters");
+    fs.ensureDirSync(this.characterStoreDirPath);
+
     this.logLevel = (process.env.LOG_LEVEL || defaultLogLevel) as pino.Level;
     this.whisperVerbose = process.env.WHISPER_VERBOSE === "true";
     this.port = process.env.PORT ? parseInt(process.env.PORT) : defaultPort;
@@ -102,8 +139,41 @@ export class Config {
 
   public ensureConfig() {
     if (!this.pexelsApiKey) {
+      logger.warn(
+        "PEXELS_API_KEY is not set - the Pexels video provider will be skipped. Get a free key: https://www.pexels.com/api/key/",
+      );
+    }
+    if (!this.coverrApiKey) {
+      logger.warn(
+        "COVERR_API_KEY is not set - the Coverr video provider will be skipped.",
+      );
+    }
+    if (!this.pixabayApiKey) {
+      logger.warn(
+        "PIXABAY_API_KEY is not set - the Pixabay video provider will be skipped.",
+      );
+    }
+
+    const hasLocalVideos =
+      fs.existsSync(this.localVideosDirPath) &&
+      fs.readdirSync(this.localVideosDirPath).length > 0;
+    if (!hasLocalVideos) {
+      logger.warn(
+        { localVideosDirPath: this.localVideosDirPath },
+        "No local video files found - the local video provider will be skipped.",
+      );
+    }
+
+    if (
+      !this.pexelsApiKey &&
+      !this.coverrApiKey &&
+      !this.pixabayApiKey &&
+      !hasLocalVideos
+    ) {
       throw new Error(
-        "PEXELS_API_KEY environment variable is missing. Get your free API key: https://www.pexels.com/api/key/ - see how to run the project: https://github.com/gyoridavid/short-video-maker",
+        "No video provider is configured. Set at least one of COVERR_API_KEY, PIXABAY_API_KEY, " +
+          "PEXELS_API_KEY, or add video files to LOCAL_VIDEOS_DIR (default ./assets/videos) - " +
+          "see how to run the project: https://github.com/gyoridavid/short-video-maker",
       );
     }
   }
